@@ -63,7 +63,7 @@ class FacebookUploader:
         # Selectors untuk Facebook Status
         self.status_selectors = {
             'status_input': [
-                # Selector baru yang diberikan user
+                # Selector baru yang diberikan user (PRIMARY)
                 "#mount_0_0_aw > div > div:nth-child(1) > div > div:nth-child(5) > div > div > div.x9f619.x1n2onr6.x1ja2u2z > div > div.x1uvtmcs.x4k7w5x.x1h91t0o.x1beo9mf.xaigb6o.x12ejxvf.x3igimt.xarpa2k.xedcshv.x1lytzrv.x1t2pt76.x7ja8zs.x1n2onr6.x1qrby5j.x1jfb8zj > div > div > div > form > div > div.x9f619.x1ja2u2z.x1k90msu.x6o7n8i.x1qfuztq.x1o0tod.x10l6tqk.x13vifvy.x1hc1fzr.x71s49j > div > div > div > div.xb57i2i.x1q594ok.x5lxg6s.x6ikm8r.x1ja2u2z.x1pq812k.x1rohswg.xfk6m8.x1yqm8si.xjx87ck.xx8ngbg.xwo3gff.x1n2onr6.x1oyok0e.x1odjw0f.x1e4zzel.x78zum5.xdt5ytf.x1iyjqo2 > div.x78zum5.xdt5ytf.x1iyjqo2.x1n2onr6 > div.x1ed109x.x1iyjqo2.x5yr21d.x1n2onr6.xh8yej3 > div.x9f619.x1iyjqo2.xg7h5cd.xf7dkkf.x1n2onr6.xh8yej3.x1ja2u2z.xjfo4ez > div > div > div.xzsf02u.x1a2a7pz.x1n2onr6.x14wi4xw.x9f619.x1lliihq.x5yr21d.xh8yej3.notranslate > p",
                 # Fallback selectors
                 "div[contenteditable='true'][data-text*='mind']",
@@ -79,6 +79,17 @@ class FacebookUploader:
                 "input[type='file'][accept*='video']",
                 "input[type='file']",
                 "[data-testid='media-upload-input']"
+            ],
+            'media_upload_status': [
+                # Selector baru untuk cek status upload media
+                "#mount_0_0_xy > div > div:nth-child(1) > div > div:nth-child(5) > div > div > div.x9f619.x1n2onr6.x1ja2u2z > div > div.x1uvtmcs.x4k7w5x.x1h91t0o.x1beo9mf.xaigb6o.x12ejxvf.x3igimt.xarpa2k.xedcshv.x1lytzrv.x1t2pt76.x7ja8zs.x1n2onr6.x1qrby5j.x1jfb8zj > div > div > div > form > div > div.x9f619.x1ja2u2z.x1k90msu.x6o7n8i.x1qfuztq.x1o0tod.x10l6tqk.x13vifvy.x1hc1fzr.x71s49j > div > div > div > div.xb57i2i.x1q594ok.x5lxg6s.x6ikm8r.x1ja2u2z.x1pq812k.x1rohswg.xfk6m8.x1yqm8si.xjx87ck.xx8ngbg.xwo3gff.x1n2onr6.x1oyok0e.x1odjw0f.x1e4zzel.x78zum5.xdt5ytf.x1iyjqo2 > div.x78zum5.xdt5ytf.x1iyjqo2.x1n2onr6 > div.xexx8yu.xf159sx.x18d9i69.xmzvs34 > div > div.x1obq294.x5a5i1n.xde0f50.x15x8krk.x6ikm8r.x10wlt62.x1n2onr6.xh8yej3",
+                # Fallback selectors untuk media upload status
+                ".media-upload-preview",
+                ".media-preview-container",
+                "[data-testid='media-preview']",
+                ".attachment-preview",
+                "div[role='img']",
+                ".media-attachment"
             ],
             'post_button': [
                 "div[aria-label='Post'][role='button']",
@@ -338,6 +349,40 @@ class FacebookUploader:
                 
         return None
 
+    def check_media_upload_status(self, timeout: int = 30) -> bool:
+        """
+        Cek apakah media sudah berhasil diupload menggunakan selector baru
+        
+        Args:
+            timeout: Timeout dalam detik untuk menunggu upload selesai
+            
+        Returns:
+            True jika media berhasil diupload, False jika tidak
+        """
+        self._log("Mengecek status upload media...")
+        
+        start_time = time.time()
+        
+        while time.time() - start_time < timeout:
+            # Cek menggunakan selector baru yang diberikan user
+            media_status_element = self._find_element_by_selectors(
+                self.status_selectors['media_upload_status'], 
+                timeout=2, 
+                visible=False
+            )
+            
+            if media_status_element:
+                # Cek apakah elemen terlihat dan memiliki konten
+                if media_status_element.is_displayed():
+                    self._log("Media berhasil diupload dan terdeteksi!", "SUCCESS")
+                    return True
+            
+            # Tunggu sebentar sebelum cek lagi
+            time.sleep(1)
+        
+        self._log("Timeout menunggu konfirmasi upload media", "WARNING")
+        return False
+
     def load_cookies(self) -> bool:
         """Load cookies dari file JSON"""
         if not self.cookies_path.exists():
@@ -533,8 +578,17 @@ class FacebookUploader:
                 if media_input:
                     abs_path = os.path.abspath(media_path)
                     media_input.send_keys(abs_path)
-                    self._log("Media berhasil diupload", "SUCCESS")
-                    time.sleep(3)  # Tunggu media diproses
+                    self._log("Media berhasil dikirim ke input", "SUCCESS")
+                    
+                    # Tunggu dan cek status upload menggunakan selector baru
+                    upload_success = self.check_media_upload_status(timeout=30)
+                    
+                    if upload_success:
+                        self._log("Media berhasil diupload dan dikonfirmasi!", "SUCCESS")
+                    else:
+                        self._log("Media mungkin berhasil diupload tapi tidak dapat dikonfirmasi", "WARNING")
+                    
+                    time.sleep(3)  # Tunggu tambahan untuk memastikan processing selesai
                 else:
                     self._log("Input media tidak ditemukan, melanjutkan tanpa media", "WARNING")
             
